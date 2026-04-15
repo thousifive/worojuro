@@ -144,19 +144,60 @@ async function fetchHNJobs(): Promise<RawJob[]> {
   }
 }
 
+async function fetchAdzuna(): Promise<RawJob[]> {
+  const appId = process.env.ADZUNA_APP_ID;
+  const apiKey = process.env.ADZUNA_API_KEY;
+  if (!appId || !apiKey) return []; // silently skip if keys not set
+
+  try {
+    const url = new URL('https://api.adzuna.com/v1/api/jobs/us/search/1');
+    url.searchParams.set('app_id', appId);
+    url.searchParams.set('app_key', apiKey);
+    url.searchParams.set('results_per_page', '50');
+    url.searchParams.set('what', 'software engineer');
+    url.searchParams.set('content-type', 'application/json');
+
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(10000) });
+    const data = (await res.json()) as {
+      results: Array<{
+        id: string; title: string; company: { display_name: string };
+        location: { display_name: string }; description: string;
+        salary_min?: number; salary_max?: number; created: string;
+        redirect_url: string;
+      }>;
+    };
+
+    return (data.results ?? []).map((j) => ({
+      source: 'adzuna' as const,
+      externalId: j.id,
+      title: j.title,
+      company: j.company.display_name,
+      location: j.location.display_name,
+      salaryMin: j.salary_min ? Math.round(j.salary_min) : undefined,
+      salaryMax: j.salary_max ? Math.round(j.salary_max) : undefined,
+      descriptionRaw: j.description,
+      postedAt: new Date(j.created),
+    }));
+  } catch (err) {
+    console.error('[ingestion] Adzuna fetch failed:', err);
+    return [];
+  }
+}
+
 // ── Main ingestion function ────────────────────────────────────────────────────
 
 export async function ingestJobs(): Promise<void> {
   console.log('[ingestion] Starting job ingestion...');
 
-  const [remotive, jobicy, remoteok, hn] = await Promise.all([
+  const [remotive, jobicy, remoteok, hn, adzuna] = await Promise.all([
     fetchRemotive(),
     fetchJobicy(),
     fetchRemoteOK(),
     fetchHNJobs(),
+    fetchAdzuna(),
   ]);
 
-  const allJobs = [...remotive, ...jobicy, ...remoteok, ...hn];
+  const allJobs = [...remotive, ...jobicy, ...remoteok, ...hn, ...adzuna];
   console.log(`[ingestion] Fetched ${allJobs.length} raw jobs`);
 
   let inserted = 0;

@@ -16,14 +16,15 @@
 
 import { db, jobs, jobMatches, resumes } from '../db';
 import { generateEmbedding } from '../ai/client';
+import { scoreMatch } from '../ai/match-scorer';
 import { eq, and, isNull, isNotNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
-import type { MatchBreakdown } from '@/types';
+import type { MatchBreakdown, UserPreferences } from '@/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 /** Clamp cosine similarity (0–1) to a 0–100 integer match score */
-function toMatchScore(similarity: number): number {
+export function toMatchScore(similarity: number): number {
   return Math.round(Math.max(0, Math.min(1, similarity)) * 100);
 }
 
@@ -31,7 +32,7 @@ function toMatchScore(similarity: number): number {
  * Compute skill overlap score 0–100.
  * Fuzzy: job tag is counted as matched if it contains or is contained by any resume skill.
  */
-function skillOverlapScore(jobTags: string[], resumeSkills: string[]): number {
+export function skillOverlapScore(jobTags: string[], resumeSkills: string[]): number {
   if (jobTags.length === 0) return 50;
   const jLower = jobTags.map((s) => s.toLowerCase());
   const rLower = resumeSkills.map((s) => s.toLowerCase());
@@ -64,10 +65,15 @@ export async function embedNewJobs(limit = 50): Promise<number> {
 
 // ── Step 2: match jobs for a single user ──────────────────────────────────────
 
+// AI scorer called for top matches only — caps at AI_SCORE_LIMIT per user per run
+const AI_SCORE_LIMIT = 10;
+const AI_SCORE_THRESHOLD = 0.65; // only call AI for similarity >= this
+
 export async function matchJobsForUser(
   userId: string,
   resumeEmbedding: number[],
   resumeSkills: string[],
+  userPreferences: UserPreferences,
   limit = 100
 ): Promise<number> {
   // Guard: embedding must be all finite numbers (defensive, values come from Ollama)
@@ -79,15 +85,29 @@ export async function matchJobsForUser(
 
   type SimilarityRow = {
     id: string;
+    title: string;
+    company: string;
     tech_stack: string[] | null;
+    perks: string[] | null;
     remote_type: string | null;
+    location: string | null;
+    salary_min: number | null;
+    salary_max: number | null;
+    description_raw: string;
     similarity: string; // Postgres returns numeric as string
   };
 
   const topJobs = (await db.execute(sql`
     SELECT j.id,
+           j.title,
+           j.company,
            j.tech_stack,
+           j.perks,
            j.remote_type,
+           j.location,
+           j.salary_min,
+           j.salary_max,
+           j.description_raw,
            1 - (j.embedding <=> ${sql.raw(`'${embeddingLiteral}'::vector`)}) AS similarity
     FROM   jobs j
     WHERE  j.embedding IS NOT NULL
@@ -103,19 +123,58 @@ export async function matchJobsForUser(
   `)) as SimilarityRow[];
 
   let inserted = 0;
+  let aiCallsUsed = 0;
+
   for (const row of topJobs) {
     const similarity = parseFloat(row.similarity);
-    const matchScore = toMatchScore(similarity);
-    const techScore = skillOverlapScore(row.tech_stack ?? [], resumeSkills);
 
-    const breakdown: MatchBreakdown = {
-      skills_score: techScore,
-      tech_score: techScore,
-      salary_score: 50,
-      location_score: row.remote_type === 'remote' ? 100 : 60,
-      perks_score: 50,
-      explanation: `${matchScore}% semantic similarity between your resume and this job.`,
-    };
+    // AI breakdown for high-similarity matches — cap calls to avoid slow cron
+    let breakdown: MatchBreakdown | null = null;
+    if (similarity >= AI_SCORE_THRESHOLD && aiCallsUsed < AI_SCORE_LIMIT) {
+      const aiResult = await scoreMatch({
+        userId,
+        jobId: row.id,
+        jobTitle: row.title,
+        jobCompany: row.company,
+        jobSalaryMin: row.salary_min,
+        jobSalaryMax: row.salary_max,
+        jobTechStack: row.tech_stack ?? [],
+        jobLocation: row.location,
+        jobRemoteType: row.remote_type,
+        jobPerks: row.perks ?? [],
+        jobDescriptionCleaned: row.description_raw,
+        userPreferences,
+        vectorSimilarity: similarity,
+      });
+      if (aiResult) {
+        breakdown = aiResult.breakdown;
+        aiCallsUsed++;
+      }
+    }
+
+    // Algorithmic fallback if AI unavailable or below threshold
+    if (!breakdown) {
+      const techScore = skillOverlapScore(row.tech_stack ?? [], resumeSkills);
+      breakdown = {
+        skills_score: techScore,
+        tech_score: techScore,
+        salary_score: 50,
+        location_score: row.remote_type === 'remote' ? 100 : 60,
+        perks_score: 50,
+        explanation: `${toMatchScore(similarity)}% semantic similarity between your resume and this job.`,
+      };
+    }
+
+    // For AI-scored matches, scoreMatch blends vector + AI → use its score
+    // For algorithmic, derive from cosine similarity
+    const matchScore = breakdown.explanation.startsWith(String(toMatchScore(similarity)))
+      ? toMatchScore(similarity)
+      : (() => {
+          const aiAvg =
+            (breakdown!.skills_score + breakdown!.tech_score + breakdown!.salary_score +
+              breakdown!.location_score + breakdown!.perks_score) / 5;
+          return Math.round(similarity * 100 * 0.4 + aiAvg * 0.6);
+        })();
 
     const result = await db
       .insert(jobMatches)
@@ -123,7 +182,7 @@ export async function matchJobsForUser(
         id: randomUUID(),
         userId,
         jobId: row.id,
-        matchScore,
+        matchScore: Math.min(100, Math.max(0, matchScore)),
         matchBreakdown: breakdown,
       })
       .onConflictDoNothing()
@@ -132,7 +191,7 @@ export async function matchJobsForUser(
     if (result.length > 0) inserted++;
   }
 
-  console.log(`[job-matching] User ${userId}: inserted ${inserted} new matches`);
+  console.log(`[job-matching] User ${userId}: inserted ${inserted} matches (${aiCallsUsed} AI-scored)`);
   return inserted;
 }
 
@@ -143,17 +202,23 @@ export async function matchNewJobs(): Promise<void> {
 
   await embedNewJobs(50);
 
-  // All users with an active resume that has been embedded
+  // All users with an active embedded resume — fetch user preferences via relation
   const activeResumes = await db.query.resumes.findMany({
     where: and(eq(resumes.isActive, true), isNotNull(resumes.embedding)),
     columns: { userId: true, embedding: true, parsedSkills: true },
+    with: { user: { columns: { preferences: true } } },
   });
 
   console.log(`[job-matching] Found ${activeResumes.length} users with active embedded resumes`);
 
   for (const resume of activeResumes) {
     if (!resume.embedding) continue;
-    await matchJobsForUser(resume.userId, resume.embedding, resume.parsedSkills);
+    await matchJobsForUser(
+      resume.userId,
+      resume.embedding,
+      resume.parsedSkills,
+      resume.user.preferences,
+    );
   }
 
   console.log('[job-matching] Matching pipeline complete');
