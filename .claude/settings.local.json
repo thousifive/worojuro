@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npm install:*)",
+      "Bash(ollama list:*)",
+      "Bash(python3 -m json.tool)",
+      "Bash(node -e \"const mod = require\\('pdf-parse'\\); console.log\\('Type:', typeof mod\\); console.log\\('Keys:', Object.keys\\(mod\\).slice\\(0, 10\\)\\); console.log\\('Default:', typeof mod.default\\); console.log\\('PDFParse:', typeof mod.PDFParse\\);\")",
+      "Bash(node --input-type=module -e \"import pdfParse from 'pdf-parse'; console.log\\('Type:', typeof pdfParse\\); console.log\\('Keys:', Object.keys\\(pdfParse\\).slice\\(0, 5\\)\\);\")",
+      "Bash(node --input-type=module -e \"import { PDFParse } from 'pdf-parse'; console.log\\('Type:', typeof PDFParse\\); console.log\\('Is function:', typeof PDFParse === 'function'\\);\")",
+      "Bash(node -e \"const p = require\\('./node_modules/pdf-parse'\\); console.log\\(typeof p, typeof p.default, Object.keys\\(p\\).slice\\(0,5\\)\\)\")",
+      "Bash(node -e \"const p = require\\('./node_modules/pdf-parse'\\); console.log\\(Object.keys\\(p\\)\\)\")"
+    ]
+  }
+}

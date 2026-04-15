@@ -1,0 +1,2 @@
+# Drizzle migrations generated here via: npx drizzle-kit generate
+# Rule: never apply without reviewing SQL diff first (db-engineer SKILL.md)
