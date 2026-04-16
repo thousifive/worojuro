@@ -22,7 +22,7 @@ export type NotificationType =
   | 'woro_alert'
   | 'next_action';
 
-export type JobSource = 'remotive' | 'jobicy' | 'remoteok' | 'adzuna' | 'hn' | 'linkedin';
+export type JobSource = 'remotive' | 'jobicy' | 'remoteok' | 'adzuna' | 'hn' | 'linkedin' | 'himalayas';
 
 export type PulseSource =
   | 'hn'
@@ -222,6 +222,25 @@ export interface MarketSignal {
   analysis: string;
   data_snapshot: Record<string, unknown>;
   generated_at: Date;
+}
+
+// ─── Salary formatting ────────────────────────────────────────────────────────
+
+export function formatSalary(
+  min: number | null,
+  max: number | null,
+  currency = 'USD'
+): string {
+  const fmt = (n: number) =>
+    new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0,
+    }).format(n);
+  if (min && max) return `${fmt(min)} – ${fmt(max)}`;
+  if (min) return `${fmt(min)}+`;
+  if (max) return `Up to ${fmt(max)}`;
+  return 'Not specified';
 }
 
 // ─── Resume ───────────────────────────────────────────────────────────────────

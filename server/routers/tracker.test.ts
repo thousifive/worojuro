@@ -54,6 +54,85 @@ describe('tracker status transitions', () => {
   });
 });
 
+describe('applyToJob dedup', () => {
+  // Simulates the upsert logic in applyToJob without hitting the DB.
+
+  interface MockApplication {
+    id: string;
+    userId: string;
+    jobId: string;
+    status: Status;
+    appliedDate: string;
+  }
+
+  function applyToJobLogic(
+    store: MockApplication[],
+    userId: string,
+    jobId: string,
+    today: string,
+  ): { applicationId: string; isNew: boolean } {
+    const existing = store.find((a) => a.userId === userId && a.jobId === jobId);
+    if (existing) {
+      existing.status = 'applied';
+      existing.appliedDate = today;
+      return { applicationId: existing.id, isNew: false };
+    }
+    const newApp: MockApplication = {
+      id: `uuid-${store.length + 1}`,
+      userId,
+      jobId,
+      status: 'applied',
+      appliedDate: today,
+    };
+    store.push(newApp);
+    return { applicationId: newApp.id, isNew: true };
+  }
+
+  it('first apply creates new application', () => {
+    const store: MockApplication[] = [];
+    const result = applyToJobLogic(store, 'user-1', 'job-1', '2026-04-16');
+    expect(result.isNew).toBe(true);
+    expect(store).toHaveLength(1);
+  });
+
+  it('second apply to same job updates, not inserts', () => {
+    const store: MockApplication[] = [];
+    applyToJobLogic(store, 'user-1', 'job-1', '2026-04-16');
+    const result = applyToJobLogic(store, 'user-1', 'job-1', '2026-04-16');
+    expect(result.isNew).toBe(false);
+    expect(store).toHaveLength(1); // still 1 row
+  });
+
+  it('returns same applicationId on duplicate apply', () => {
+    const store: MockApplication[] = [];
+    const first = applyToJobLogic(store, 'user-1', 'job-1', '2026-04-16');
+    const second = applyToJobLogic(store, 'user-1', 'job-1', '2026-04-16');
+    expect(first.applicationId).toBe(second.applicationId);
+  });
+
+  it('different user can apply to same job independently', () => {
+    const store: MockApplication[] = [];
+    applyToJobLogic(store, 'user-1', 'job-1', '2026-04-16');
+    applyToJobLogic(store, 'user-2', 'job-1', '2026-04-16');
+    expect(store).toHaveLength(2);
+  });
+
+  it('same user can apply to different jobs', () => {
+    const store: MockApplication[] = [];
+    applyToJobLogic(store, 'user-1', 'job-1', '2026-04-16');
+    applyToJobLogic(store, 'user-1', 'job-2', '2026-04-16');
+    expect(store).toHaveLength(2);
+  });
+
+  it('duplicate apply updates status to applied regardless of prior status', () => {
+    const store: MockApplication[] = [
+      { id: 'uuid-1', userId: 'user-1', jobId: 'job-1', status: 'saved', appliedDate: '' },
+    ];
+    applyToJobLogic(store, 'user-1', 'job-1', '2026-04-16');
+    expect(store[0]?.status).toBe('applied');
+  });
+});
+
 describe('tracker application schema', () => {
   it('default status is saved', () => {
     const defaults = { status: 'saved' as Status };

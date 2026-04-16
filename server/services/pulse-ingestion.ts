@@ -100,7 +100,7 @@ async function fetchTechCrunchRSS(): Promise<RawPulseItem[]> {
       const isFunding = /funding|raise|series|million|billion/i.test(title);
       return {
         source: 'techcrunch_rss' as const,
-        externalId: `tc-${i}-${Date.now()}`,
+        externalId: `tc-${Buffer.from(title + (pubDate ?? '')).toString('base64').slice(0, 32)}`,
         category: isFunding ? 'funding' as const : 'market_change' as const,
         title,
         url: link,

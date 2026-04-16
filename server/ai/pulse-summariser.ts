@@ -50,7 +50,15 @@ export async function summarisePendingItems(db: DB): Promise<void> {
   });
 
   for (const item of pending) {
-    await summarisePulseItem(db, item.id, item.title, item.summaryRaw, item.category);
+    // 15s timeout per item — prevents a slow Ollama from stalling the entire cron
+    await Promise.race([
+      summarisePulseItem(db, item.id, item.title, item.summaryRaw, item.category),
+      new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error('summarise timeout')), 15_000)
+      ),
+    ]).catch((err) => {
+      console.error('[pulse-summariser] Skipped item', item.id, err instanceof Error ? err.message : err);
+    });
     await new Promise((r) => setTimeout(r, 200)); // polite pacing for local Ollama
   }
 }

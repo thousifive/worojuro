@@ -125,4 +125,34 @@ describe('scoreJob', () => {
     const result = await scoreJob({ ...mockInput, postedAt: null });
     expect(result).not.toBeNull();
   });
+
+  it('sets repost_age_days to null when postedAt is null', async () => {
+    mockGenerateText.mockResolvedValueOnce(makeResponse());
+    const result = await scoreJob({ ...mockInput, postedAt: null });
+    expect(result!.signals.repost_age_days).toBeUndefined();
+  });
+
+  it('computes repost_age_days correctly from postedAt', async () => {
+    mockGenerateText.mockResolvedValueOnce(makeResponse());
+    const fortyFiveDaysAgo = new Date(Date.now() - 45 * 86_400_000);
+    const result = await scoreJob({ ...mockInput, postedAt: fortyFiveDaysAgo });
+    expect(result!.signals.repost_age_days).toBeGreaterThanOrEqual(44);
+    expect(result!.signals.repost_age_days).toBeLessThanOrEqual(46);
+  });
+
+  it('injects stale warning into prompt for jobs posted > 30 days ago', async () => {
+    mockGenerateText.mockResolvedValueOnce(makeResponse());
+    const fortyDaysAgo = new Date(Date.now() - 40 * 86_400_000);
+    await scoreJob({ ...mockInput, postedAt: fortyDaysAgo });
+    const promptArg = mockGenerateText.mock.calls[0]?.[0] as string;
+    expect(promptArg).toContain('STALE');
+  });
+
+  it('does NOT inject stale warning for recent jobs (< 30 days)', async () => {
+    mockGenerateText.mockResolvedValueOnce(makeResponse());
+    const tenDaysAgo = new Date(Date.now() - 10 * 86_400_000);
+    await scoreJob({ ...mockInput, postedAt: tenDaysAgo });
+    const promptArg = mockGenerateText.mock.calls[0]?.[0] as string;
+    expect(promptArg).not.toContain('STALE');
+  });
 });

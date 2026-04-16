@@ -86,6 +86,11 @@ export function WoroScoreBadge({
           {signals.explanation && (
             <p className="mt-2 text-gray-300 leading-tight">{signals.explanation}</p>
           )}
+          {signals.repost_age_days !== undefined && signals.repost_age_days > 14 && (
+            <p className={`mt-1 text-xs ${signals.repost_age_days > 30 ? 'text-red-400' : 'text-amber-400'}`}>
+              ⚠ Posted {signals.repost_age_days}d ago{signals.repost_age_days > 60 ? ' — likely stale' : ''}
+            </p>
+          )}
           {signals.has_vague_language && (
             <p className="mt-1 text-amber-400 text-xs">⚠ Vague language detected</p>
           )}

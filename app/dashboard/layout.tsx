@@ -1,13 +1,13 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Overview', icon: '◈' },
   { href: '/dashboard/tracker', label: 'Tracker', icon: '⊞' },
   { href: '/dashboard/feed', label: 'Job Feed', icon: '◉' },
   { href: '/dashboard/vault', label: 'Resume Vault', icon: '⊡' },
-  { href: '/dashboard/notifications', label: 'Notifications', icon: '◎' },
   { href: '/dashboard/referrals', label: 'Referrals', icon: '◈' },
   { href: '/dashboard/analysis', label: 'Analysis', icon: '◆' },
   { href: '/dashboard/pulse', label: 'Market Pulse', icon: '◇' },
@@ -46,6 +46,7 @@ export default async function DashboardLayout({
               {item.label}
             </Link>
           ))}
+          <NotificationBell userId={user.id} />
         </nav>
 
         <div className="p-3 border-t border-gray-200">

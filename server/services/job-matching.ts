@@ -14,9 +14,10 @@
  * Never re-match a (user, job) pair that already exists.
  */
 
-import { db, jobs, jobMatches, resumes } from '../db';
+import { db, jobs, jobMatches, resumes, notifications } from '../db';
 import { generateEmbedding } from '../ai/client';
 import { scoreMatch } from '../ai/match-scorer';
+import { broadcastNotification } from './realtime';
 import { eq, and, isNull, isNotNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import type { MatchBreakdown, UserPreferences } from '@/types';
@@ -94,6 +95,7 @@ export async function matchJobsForUser(
     salary_min: number | null;
     salary_max: number | null;
     description_raw: string;
+    woro_score: number | null;
     similarity: string; // Postgres returns numeric as string
   };
 
@@ -108,6 +110,7 @@ export async function matchJobsForUser(
            j.salary_min,
            j.salary_max,
            j.description_raw,
+           j.woro_score,
            1 - (j.embedding <=> ${sql.raw(`'${embeddingLiteral}'::vector`)}) AS similarity
     FROM   jobs j
     WHERE  j.embedding IS NOT NULL
@@ -188,7 +191,31 @@ export async function matchJobsForUser(
       .onConflictDoNothing()
       .returning({ id: jobMatches.id });
 
-    if (result.length > 0) inserted++;
+    if (result.length > 0) {
+      inserted++;
+
+      // Standing rule: woro_score < 40 → woro_alert notification (CLAUDE.md)
+      const woroScore = row.woro_score !== null ? Number(row.woro_score) : null;
+      if (woroScore !== null && woroScore < 40) {
+        try {
+          await db.insert(notifications).values({
+            userId,
+            type: 'woro_alert',
+            title: `Suspicious listing: ${row.title}`,
+            body: `${row.company} posted "${row.title}" with a Woro score of ${woroScore}/100 — verify before applying.`,
+            metadata: { jobId: row.id, woroScore },
+          });
+          await broadcastNotification(userId, {
+            type: 'woro_alert',
+            title: `Suspicious listing: ${row.title}`,
+            body: `Woro score ${woroScore}/100 — verify before applying.`,
+            metadata: { jobId: row.id, woroScore },
+          });
+        } catch (err) {
+          console.error('[job-matching] Failed to create woro_alert for job', row.id, err);
+        }
+      }
+    }
   }
 
   console.log(`[job-matching] User ${userId}: inserted ${inserted} matches (${aiCallsUsed} AI-scored)`);

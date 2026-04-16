@@ -2,13 +2,23 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { trpc } from '@/lib/trpc/client';
-import { JobCard } from './JobCard';
+import { JobCard, type JobSource } from './JobCard';
+import { FeedFilters, DEFAULT_FILTERS } from './FeedFilters';
+import type { FeedFilterState } from './FeedFilters';
 import { Loader2, SearchX } from 'lucide-react';
 
 export function JobFeed() {
-  const [minWoroScore, setMinWoroScore] = useState(30);
-  const [filterRemote, setFilterRemote] = useState(false);
+  const [filters, setFilters] = useState<FeedFilterState>(DEFAULT_FILTERS);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  // Load all referral contacts once — used to show referral chips on cards
+  const { data: allContacts = [] } = trpc.referrals.getAll.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Parse salary strings to numbers for the query
+  const salaryMinNum = filters.salaryMin ? Number(filters.salaryMin) : undefined;
+  const salaryMaxNum = filters.salaryMax ? Number(filters.salaryMax) : undefined;
 
   const {
     data,
@@ -19,8 +29,14 @@ export function JobFeed() {
   } = trpc.jobs.getFeed.useInfiniteQuery(
     {
       limit: 20,
-      minWoroScore,
-      remoteOnly: filterRemote,
+      minWoroScore: filters.minWoroScore,
+      remoteOnly: filters.remoteOnly,
+      matchedOnly: filters.matchedOnly,
+      techStack: filters.techStack,
+      salaryMin: salaryMinNum,
+      salaryMax: salaryMaxNum,
+      currency: filters.currency || undefined,
+      location: filters.location || undefined,
     },
     {
       getNextPageParam: (page) => page.nextCursor,
@@ -29,11 +45,10 @@ export function JobFeed() {
     }
   );
 
-  // Infinite scroll — IntersectionObserver on sentinel div
+  // Infinite scroll sentinel
   useEffect(() => {
     const el = loadMoreRef.current;
     if (!el) return;
-
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
@@ -42,43 +57,16 @@ export function JobFeed() {
       },
       { rootMargin: '200px' }
     );
-
     observer.observe(el);
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const allItems = data?.pages.flatMap((p) => p.items) ?? [];
-  // Filter out matches with null job (job deleted or filtered by woro score condition)
   const visibleItems = allItems.filter((m) => m.job !== null);
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
-      <div className="flex items-center gap-4 pb-2">
-        <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={filterRemote}
-            onChange={(e) => setFilterRemote(e.target.checked)}
-            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-          />
-          Remote only
-        </label>
-
-        <div className="flex items-center gap-2 text-xs text-gray-600">
-          <span>Hide Woro &lt;</span>
-          <select
-            value={minWoroScore}
-            onChange={(e) => setMinWoroScore(Number(e.target.value))}
-            className="text-xs border-gray-200 rounded px-1.5 py-0.5 focus:ring-indigo-500 focus:border-indigo-500"
-          >
-            <option value={0}>0 (show all)</option>
-            <option value={30}>30</option>
-            <option value={50}>50</option>
-            <option value={70}>70</option>
-          </select>
-        </div>
-      </div>
+      <FeedFilters filters={filters} onChange={setFilters} />
 
       {/* Loading skeleton */}
       {isLoading && (
@@ -108,9 +96,9 @@ export function JobFeed() {
       {!isLoading && visibleItems.length === 0 && (
         <div className="text-center py-16 text-sm text-gray-400">
           <SearchX className="mx-auto mb-3 text-gray-300" size={36} />
-          <p className="font-medium text-gray-500">No matches yet</p>
+          <p className="font-medium text-gray-500">No matches for these filters</p>
           <p className="mt-1 text-xs text-gray-400">
-            Upload a resume and run the ingest cron to populate your feed.
+            Try relaxing a filter, or upload a resume and run the ingest cron to populate your feed.
           </p>
         </div>
       )}
@@ -123,6 +111,8 @@ export function JobFeed() {
             key={match.id}
             matchId={match.id}
             jobId={match.jobId}
+            source={job.source as JobSource}
+            externalId={job.externalId}
             title={job.title}
             company={job.company}
             location={job.location ?? null}
@@ -135,7 +125,12 @@ export function JobFeed() {
             woroSignals={(job.woroSignals as import('@/types').WoroSignals) ?? null}
             matchScore={match.matchScore}
             isSaved={match.isSaved}
+            applyUrl={job.applyUrl ?? null}
             postedAt={job.postedAt ?? null}
+            referralContacts={allContacts.filter(
+              (c) => c.company && job.company &&
+                c.company.toLowerCase().includes(job.company.toLowerCase())
+            )}
           />
         );
       })}
@@ -151,7 +146,7 @@ export function JobFeed() {
 
       {!isLoading && !hasNextPage && visibleItems.length > 0 && (
         <p className="text-center text-xs text-gray-400 py-4">
-          You&apos;ve seen all {visibleItems.length} matches
+          {visibleItems.length} match{visibleItems.length !== 1 ? 'es' : ''} shown
         </p>
       )}
     </div>

@@ -30,6 +30,15 @@ export function PulseFeed({ favoriteCompanies = [] }: PulseFeedProps) {
   const { data, isLoading } = trpc.pulse.getFeed.useQuery({ category: activeTab });
   const { data: stats } = trpc.pulse.getStats.useQuery();
 
+  // Companies with active job matches — used to flag "companies hiring from layoff"
+  const { data: feedData } = trpc.jobs.getFeed.useQuery(
+    { limit: 100 },
+    { staleTime: 5 * 60 * 1000, enabled: activeTab === 'layoff' }
+  );
+  const feedCompanies = feedData?.items
+    .map((m) => m.job?.company?.toLowerCase())
+    .filter((c): c is string => Boolean(c)) ?? [];
+
   const interact = trpc.pulse.interact.useMutation();
   const utils = trpc.useUtils();
 
@@ -93,10 +102,14 @@ export function PulseFeed({ favoriteCompanies = [] }: PulseFeedProps) {
           );
 
           if (item.category === 'layoff') {
+            const hiringFromLayoff = item.company
+              ? feedCompanies.some((c) => c.includes(item.company!.toLowerCase()))
+              : false;
             return (
               <LayoffCard
                 key={item.id}
                 item={item}
+                hiringFromLayoff={hiringFromLayoff}
                 onDismiss={handleDismiss}
                 onSave={handleSave}
               />

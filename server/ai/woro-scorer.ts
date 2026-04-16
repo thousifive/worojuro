@@ -34,6 +34,8 @@ Evaluate whether a job listing is real or a ghost/fake posting.
 
 Score on 3 dimensions (0–100 each, higher = more legitimate):
 1. fake_job_score: Are there ghost signals? Reposted for months, vague buzzwords, no salary, generic company?
+   IMPORTANT: a job posted more than 30 days ago that is still active is a strong ghost signal — penalise heavily.
+   A job posted more than 60 days ago should score below 40 on fake_job_score unless there is clear evidence it is real.
 2. jd_quality_score: Is the JD specific? Named team, concrete tech stack, real responsibilities vs copy-pasted filler?
 3. company_legitimacy_score: Is the company recognisable? Real domain? Signs of an actual business?
 
@@ -53,12 +55,20 @@ Return ONLY valid JSON — no explanation outside the JSON:
 
 export async function scoreJob(input: WoroScorerInput): Promise<WoroScorerOutput | null> {
   try {
+    const daysSincePosted = input.postedAt
+      ? Math.floor((Date.now() - input.postedAt.getTime()) / 86_400_000)
+      : null;
+
+    const ageLabel = daysSincePosted !== null
+      ? `${daysSincePosted} days ago${daysSincePosted > 30 ? ' ⚠ STALE' : ''}`
+      : 'unknown';
+
     const userMessage = `
 Job title: ${input.title}
 Company: ${input.company}
 Domain: ${input.companyDomain ?? 'unknown'}
 Source: ${input.source}
-Posted: ${input.postedAt?.toISOString() ?? 'unknown'}
+Posted: ${ageLabel}
 
 Job description (first 2000 chars):
 ${input.descriptionRaw.slice(0, 2000)}
@@ -90,6 +100,7 @@ ${input.descriptionRaw.slice(0, 2000)}
       fake_job_score: clamp(raw.fake_job_score ?? 50),
       jd_quality_score: clamp(raw.jd_quality_score ?? 50),
       company_legitimacy_score: clamp(raw.company_legitimacy_score ?? 50),
+      repost_age_days: daysSincePosted ?? undefined,
       has_vague_language: Boolean(raw.has_vague_language),
       has_copy_paste_patterns: Boolean(raw.has_copy_paste_patterns),
       has_glassdoor_presence: Boolean(raw.has_glassdoor_presence),

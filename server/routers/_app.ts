@@ -6,6 +6,7 @@ import { referralsRouter } from './referrals';
 import { analysisRouter } from './analysis';
 import { resumeRouter } from './resume';
 import { pulseRouter } from './pulse';
+import { usersRouter } from './users';
 
 export const appRouter = createTRPCRouter({
   jobs: jobsRouter,
@@ -15,6 +16,7 @@ export const appRouter = createTRPCRouter({
   analysis: analysisRouter,
   resume: resumeRouter,
   pulse: pulseRouter,
+  users: usersRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -54,7 +54,8 @@ graph LR
 - **Storage:** Supabase Storage (resumes bucket)
 - **Realtime:** Supabase Realtime
 - **Email:** Resend + React Email
-- **AI:** Claude Haiku (`claude-haiku-4-5-20251001`) · OpenAI `text-embedding-3-small`
+- **AI (local dev):** Ollama — `llama3.2` (text) · `nomic-embed-text` (embeddings)
+- **AI (production):** Claude Haiku (`claude-haiku-4-5-20251001`) · OpenAI `text-embedding-3-small`
 - **Cron:** Vercel Cron (2 free slots: 6h ingest + 7am digest)
 - **Deploy:** Vercel Hobby free tier
 

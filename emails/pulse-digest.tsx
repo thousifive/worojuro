@@ -34,7 +34,7 @@ export function PulseDigestEmail({ items, appUrl }: PulseDigestEmailProps) {
   return (
     <Html>
       <Head />
-      <Preview>Market pulse: {items.length} updates — tech, funding, layoffs</Preview>
+      <Preview>{`Market pulse: ${items.length} updates — tech, funding, layoffs`}</Preview>
       <Body style={{ backgroundColor: '#f9fafb', fontFamily: 'sans-serif' }}>
         <Container style={{ maxWidth: '560px', margin: '0 auto', padding: '24px 0' }}>
           <Heading style={{ fontSize: '20px', fontWeight: '700', color: '#111827', margin: '0 0 4px' }}>

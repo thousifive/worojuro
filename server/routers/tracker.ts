@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createTRPCRouter, protectedProcedure } from '../trpc';
-import { applications } from '../db';
+import { applications, jobs } from '../db';
 import { eq, and, asc } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
@@ -100,6 +100,60 @@ export const trackerRouter = createTRPCRouter({
           )
         );
       return { success: true };
+    }),
+
+  /**
+   * applyToJob — one-click apply from feed card.
+   * Upserts an application (dedup on user_id + job_id).
+   * If already tracked: sets status=applied + appliedDate=today.
+   * If new: inserts with pre-filled job data.
+   * Returns { applicationId, applyUrl } so frontend can window.open.
+   */
+  applyToJob: protectedProcedure
+    .input(z.object({ jobId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const job = await ctx.db.query.jobs.findFirst({
+        where: eq(jobs.id, input.jobId),
+        columns: {
+          id: true, title: true, company: true, location: true,
+          remoteType: true, applyUrl: true,
+        },
+      });
+
+      if (!job) throw new Error('Job not found');
+
+      const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+      // Check for existing application for this user+job
+      const existing = await ctx.db.query.applications.findFirst({
+        where: and(
+          eq(applications.userId, ctx.user.id),
+          eq(applications.jobId, input.jobId)
+        ),
+        columns: { id: true },
+      });
+
+      if (existing) {
+        await ctx.db
+          .update(applications)
+          .set({ status: 'applied', appliedDate: today, updatedAt: new Date() })
+          .where(eq(applications.id, existing.id));
+        return { applicationId: existing.id, applyUrl: job.applyUrl ?? null };
+      }
+
+      const newId = randomUUID();
+      await ctx.db.insert(applications).values({
+        id: newId,
+        userId: ctx.user.id,
+        jobId: job.id,
+        company: job.company,
+        role: job.title,
+        location: job.location ?? undefined,
+        remoteType: job.remoteType ?? undefined,
+        status: 'applied',
+        appliedDate: today,
+      });
+      return { applicationId: newId, applyUrl: job.applyUrl ?? null };
     }),
 
   /**

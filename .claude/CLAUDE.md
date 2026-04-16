@@ -149,3 +149,23 @@ E2E: `e2e/` directory at project root
 ## Cost: $0/month
 
 Upgrade triggers: >500MB DB or >50k MAU → Supabase Pro ~$25/mo.
+
+---
+
+## Feature committee process
+
+Every new feature idea — no matter how small — must pass through the Worojuro feature committee before any code is written, any ticket is created, or any agent begins implementation work.
+
+The committee is the full AI team: 11 agents, each voting from their own perspective.
+
+**How to trigger a committee review:**
+The founder says any of the following:
+- `"Committee: [idea]"`
+- `"Review this feature: [idea]"`
+- `"Should we build: [idea]"`
+- `"Feature idea: [idea]"`
+
+Claude Code will then invoke the `feature-committee` skill automatically.
+
+**Standing rule:**
+No agent may begin implementation of a new feature unless the committee has voted and the feature has passed the threshold. If a feature is proposed inline during a coding session (e.g. "also add X while you're there"), stop, run the committee, then proceed only if it passes. Small bug fixes and refactors are exempt — only net-new features require a committee vote.

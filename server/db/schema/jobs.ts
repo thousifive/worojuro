@@ -36,7 +36,7 @@ export const jobs = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     source: text('source')
-      .$type<'remotive' | 'jobicy' | 'remoteok' | 'adzuna' | 'hn' | 'linkedin'>()
+      .$type<'remotive' | 'jobicy' | 'remoteok' | 'adzuna' | 'hn' | 'linkedin' | 'himalayas'>()
       .notNull(),
     externalId: text('external_id').notNull(),
     title: text('title').notNull(),
@@ -57,6 +57,7 @@ export const jobs = pgTable(
     isActive: boolean('is_active').notNull().default(true),
     woroScore: integer('woro_score'),       // 0–100, null = unscored
     woroSignals: jsonb('woro_signals').$type<WoroSignals>(),
+    applyUrl: text('apply_url'),            // direct application link, null = not captured
   },
   (t) => [
     unique('jobs_source_external_id_uq').on(t.source, t.externalId),

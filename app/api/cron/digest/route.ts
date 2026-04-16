@@ -91,7 +91,7 @@ export async function GET(req: Request) {
           match_breakdown: m.matchBreakdown,
           is_dismissed: m.isDismissed,
           is_saved: m.isSaved,
-        })) as Parameters<typeof sendDailyDigest>[1],
+        })) as unknown as Parameters<typeof sendDailyDigest>[1],
         appUrl
       );
 

@@ -14,7 +14,7 @@ export function DailyDigestEmail({ matches, appUrl }: DailyDigestEmailProps) {
   return (
     <Html>
       <Head />
-      <Preview>{matches.length} new job matches — your Worojuro morning digest</Preview>
+      <Preview>{`${matches.length} new job matches — your Worojuro morning digest`}</Preview>
       <Body style={{ backgroundColor: '#f9fafb', fontFamily: 'sans-serif' }}>
         <Container style={{ maxWidth: '560px', margin: '0 auto', padding: '24px 0' }}>
           <Heading style={{ fontSize: '20px', fontWeight: '700', color: '#111827', margin: '0 0 4px' }}>
